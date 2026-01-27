@@ -1,11 +1,13 @@
 export default (err, req, res, next) => {
-  const statusCode = err.statusCode || 500;
+  const statusCode = err.statusCode || err.status || 500;
 
   req.log?.error(
     {
-      err,
+      message: err.message,
+      statusCode,
       path: req.path,
       method: req.method,
+      stack: process.env.NODE_ENV !== "production" ? err.stack : undefined,
     },
     "Unhandled error",
   );
