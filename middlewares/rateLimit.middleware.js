@@ -1,13 +1,21 @@
 import rateLimit from "express-rate-limit";
 
 /**
+ * Base config to avoid double counting (OPTIONS / preflight)
+ */
+const baseLimiterConfig = {
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => req.method === "OPTIONS",
+};
+
+/**
  * OTP SEND limiter – strict
  */
 export const otpLimiter = rateLimit({
+  ...baseLimiterConfig,
   windowMs: 60 * 1000, // 1 minute
   max: 3,
-  standardHeaders: true,
-  legacyHeaders: false,
   message: {
     success: false,
     message: "Too many OTP requests. Try again in a minute.",
@@ -28,10 +36,9 @@ export const otpLimiter = rateLimit({
  * OTP VERIFY limiter – slightly relaxed
  */
 export const verifyOtpLimiter = rateLimit({
+  ...baseLimiterConfig,
   windowMs: 5 * 60 * 1000, // 5 minutes
   max: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
   message: {
     success: false,
     message: "Too many OTP attempts. Try again later.",
@@ -52,10 +59,9 @@ export const verifyOtpLimiter = rateLimit({
  * General API limiter – soft
  */
 export const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  ...baseLimiterConfig,
+  windowMs: 15 * 60 * 1000, // 15 minutes
   max: 50,
-  standardHeaders: true,
-  legacyHeaders: false,
   message: {
     success: false,
     message: "Too many requests. Please slow down.",

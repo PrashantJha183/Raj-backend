@@ -18,7 +18,7 @@ const IS_PROD = process.env.NODE_ENV === "production";
 ========================= */
 
 const normalizeEmail = (email) => email?.trim().toLowerCase();
-const normalizePhone = (phone) => phone?.trim();
+const normalizePhone = (phone) => (phone ? `+91${phone.trim()}` : null);
 
 const hashOtp = (otp) =>
   crypto.createHash("sha256").update(String(otp)).digest("hex");
@@ -38,7 +38,7 @@ const signAccessToken = (payload) =>
 
 const signRefreshToken = (payload) =>
   jwt.sign(payload, process.env.SUPABASE_JWT_REFRESH_SECRET, {
-    expiresIn: `${process.env.REFRSH_TOKEN_TTL_DAYS}d`,
+    expiresIn: `${process.env.REFRESH_TOKEN_TTL_DAYS}d`,
     issuer: "ecommerce-api",
     audience: "refresh",
   });
@@ -50,10 +50,6 @@ const signRefreshToken = (payload) =>
 export const registerService = async ({ name, email, phone }) => {
   const cleanEmail = normalizeEmail(email);
   const cleanPhone = normalizePhone(phone);
-
-  if (!name || (!cleanEmail && !cleanPhone)) {
-    throw new Error("Name and email or phone are required");
-  }
 
   const { data: existing } = await supabase
     .from("users")
@@ -78,7 +74,7 @@ export const registerService = async ({ name, email, phone }) => {
     throw new Error("Registration failed");
   }
 
-  logger.info({ email: cleanEmail }, "User registered successfully");
+  logger.info({ email: cleanEmail, phone: cleanPhone }, "User registered");
   return { success: true };
 };
 
@@ -90,10 +86,6 @@ export const sendOtpService = async ({ email, phone }) => {
   const cleanEmail = normalizeEmail(email);
   const cleanPhone = normalizePhone(phone);
 
-  if (!cleanEmail && !cleanPhone) {
-    throw new Error("Email or phone is required");
-  }
-
   const { data: user } = await supabase
     .from("users")
     .select("id, email, phone, is_active")
@@ -103,7 +95,7 @@ export const sendOtpService = async ({ email, phone }) => {
   if (!user) throw new Error("User not registered");
   if (!user.is_active) throw new Error("User account is disabled");
 
-  /* OTP cooldown */
+  /* OTP cooldown check */
   const { data: lastOtp } = await supabase
     .from("user_otps")
     .select("created_at")
@@ -123,6 +115,7 @@ export const sendOtpService = async ({ email, phone }) => {
   const otpHash = hashOtp(otp);
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60000);
 
+  /* Invalidate previous OTPs */
   await supabase
     .from("user_otps")
     .update({ verified: true })
@@ -136,7 +129,10 @@ export const sendOtpService = async ({ email, phone }) => {
     attempts: 0,
   });
 
-  if (error) throw new Error("OTP generation failed");
+  if (error) {
+    logger.error({ error }, "OTP generation failed");
+    throw new Error("OTP generation failed");
+  }
 
   if (cleanEmail) {
     await mailer.sendMail({
@@ -164,10 +160,6 @@ export const verifyOtpService = async ({ email, phone, otp }) => {
   const cleanEmail = normalizeEmail(email);
   const cleanPhone = normalizePhone(phone);
 
-  if (!otp || (!cleanEmail && !cleanPhone)) {
-    throw new Error("Invalid request");
-  }
-
   const { data: user } = await supabase
     .from("users")
     .select("id, email, phone, is_verified, is_active")
@@ -183,7 +175,6 @@ export const verifyOtpService = async ({ email, phone, otp }) => {
     .select("id, otp_hash, expires_at, attempts")
     .eq("user_id", user.id)
     .eq("verified", false)
-    .gt("expires_at", new Date().toISOString())
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -192,6 +183,10 @@ export const verifyOtpService = async ({ email, phone, otp }) => {
 
   if (otpRecord.attempts >= MAX_OTP_ATTEMPTS) {
     throw new Error("Too many invalid attempts");
+  }
+
+  if (new Date(otpRecord.expires_at) < new Date()) {
+    throw new Error("OTP expired");
   }
 
   if (hashOtp(otp) !== otpRecord.otp_hash) {
@@ -221,9 +216,7 @@ export const verifyOtpService = async ({ email, phone, otp }) => {
     email: user.email,
   });
 
-  const refreshToken = signRefreshToken({
-    userId: user.id,
-  });
+  const refreshToken = signRefreshToken({ userId: user.id });
 
   await supabase.from("refresh_tokens").insert({
     user_id: user.id,
@@ -249,7 +242,10 @@ export const verifyOtpService = async ({ email, phone, otp }) => {
 ========================= */
 
 export const refreshTokenService = async ({ refreshToken }) => {
-  const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+  const decoded = jwt.verify(
+    refreshToken,
+    process.env.SUPABASE_JWT_REFRESH_SECRET,
+  );
 
   const { data: stored } = await supabase
     .from("refresh_tokens")

@@ -5,29 +5,18 @@ import {
   refreshTokenService,
   logoutService,
 } from "../services/auth.service.js";
-
+import { supabase } from "../config/supabase.js";
 /* =========================
-   REGISTER (NO OTP)
+   REGISTER (STRICT)
 ========================= */
 export const register = async (req, res, next) => {
   try {
-    const { name, email, phone } = req.body || {};
-
-    const cleanName = name?.trim();
-    const cleanEmail = email?.trim();
-    const cleanPhone = phone?.trim();
-
-    if (!cleanName || (!cleanEmail && !cleanPhone)) {
-      return res.status(400).json({
-        success: false,
-        message: "Name and email or phone are required",
-      });
-    }
+    const { name, email, phone } = req.body;
 
     await registerService({
-      name: cleanName,
-      email: cleanEmail,
-      phone: cleanPhone,
+      name,
+      email,
+      phone,
     });
 
     res.status(201).json({
@@ -44,21 +33,11 @@ export const register = async (req, res, next) => {
 ========================= */
 export const login = async (req, res, next) => {
   try {
-    const { email, phone } = req.body || {};
-
-    const cleanEmail = email?.trim();
-    const cleanPhone = phone?.trim();
-
-    if (!cleanEmail && !cleanPhone) {
-      return res.status(400).json({
-        success: false,
-        message: "Email or phone is required",
-      });
-    }
+    const { email, phone } = req.body;
 
     await sendOtpService({
-      email: cleanEmail,
-      phone: cleanPhone,
+      email,
+      phone,
     });
 
     res.status(200).json({
@@ -75,21 +54,12 @@ export const login = async (req, res, next) => {
 ========================= */
 export const verifyOtp = async (req, res, next) => {
   try {
-    const { email, phone, otp } = req.body || {};
-
-    const cleanOtp = String(otp || "").trim();
-
-    if (!cleanOtp) {
-      return res.status(400).json({
-        success: false,
-        message: "OTP is required",
-      });
-    }
+    const { email, phone, otp } = req.body;
 
     const result = await verifyOtpService({
-      email: email?.trim(),
-      phone: phone?.trim(),
-      otp: cleanOtp,
+      email,
+      phone,
+      otp,
     });
 
     res.status(200).json({
@@ -107,14 +77,7 @@ export const verifyOtp = async (req, res, next) => {
 ========================= */
 export const refresh = async (req, res, next) => {
   try {
-    const { refreshToken } = req.body || {};
-
-    if (!refreshToken) {
-      return res.status(400).json({
-        success: false,
-        message: "Refresh token is required",
-      });
-    }
+    const { refreshToken } = req.body;
 
     const result = await refreshTokenService({ refreshToken });
 
@@ -132,7 +95,7 @@ export const refresh = async (req, res, next) => {
 ========================= */
 export const logout = async (req, res, next) => {
   try {
-    const { refreshToken } = req.body || {};
+    const { refreshToken } = req.body;
 
     await logoutService({ refreshToken });
 
@@ -144,13 +107,31 @@ export const logout = async (req, res, next) => {
     next(error);
   }
 };
-
 /* =========================
-   GET CURRENT USER
+   GET CURRENT USER (MINIMAL)
 ========================= */
-export const getMe = async (req, res) => {
-  res.status(200).json({
-    success: true,
-    user: req.user,
-  });
+export const getMe = async (req, res, next) => {
+  try {
+    const userId = req.user.userId; // from JWT
+
+    const { data: user, error } = await supabase
+      .from("users")
+      .select("id, name, email, phone, is_verified")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (error || !user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      user,
+    });
+  } catch (err) {
+    next(err);
+  }
 };

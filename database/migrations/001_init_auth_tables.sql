@@ -98,3 +98,16 @@ create trigger trg_users_updated
 before update on public.users
 for each row
 execute procedure update_updated_at();
+
+
+ALTER TABLE public.users
+DROP CONSTRAINT IF EXISTS email_or_phone_required;
+
+ALTER TABLE public.users
+ALTER COLUMN name SET NOT NULL,
+ALTER COLUMN email SET NOT NULL,
+ALTER COLUMN phone SET NOT NULL;
+
+ALTER TABLE public.users
+ADD CONSTRAINT users_phone_format_check
+CHECK (phone ~ '^\+91[6-9][0-9]{9}$');

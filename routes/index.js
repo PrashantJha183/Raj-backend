@@ -7,7 +7,7 @@ const router = Router();
 /**
  * Health check (light rate limit)
  */
-router.get("/health", apiLimiter, async (req, res, next) => {
+router.get("/health", async (req, res, next) => {
   try {
     const { error } = await supabase.auth.getUser();
 

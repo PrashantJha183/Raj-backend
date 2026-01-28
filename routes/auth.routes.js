@@ -21,19 +21,28 @@ import {
 
 const router = express.Router();
 
+/**
+ * Register (ALL FIELDS REQUIRED)
+ */
 router.post("/register", validate(registerSchema), register);
 
-router.post("/login", otpLimiter, validate(sendOtpSchema), login);
+/**
+ * Login (Send OTP)
+ */
+router.post("/login", validate(sendOtpSchema), otpLimiter, login);
 
+/**
+ * Verify OTP (Login)
+ */
 router.post(
   "/verify-otp",
-  verifyOtpLimiter,
   validate(verifyOtpSchema),
+  verifyOtpLimiter,
   verifyOtp,
 );
 
 /**
- * Refresh access token (OIDC-style)
+ * Refresh access token
  */
 router.post("/refresh", refresh);
 
@@ -42,6 +51,9 @@ router.post("/refresh", refresh);
  */
 router.post("/logout", logout);
 
+/**
+ * Get current user
+ */
 router.get("/me", authMiddleware, getMe);
 
 export default router;
